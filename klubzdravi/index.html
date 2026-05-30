@@ -36,6 +36,9 @@
     img { max-width: 100%; display: block; }
     .ico svg { display: block; width: 20px; height: 20px; }
 
+    /* jemné 3D částicové pozadí přes celý web */
+    #bg3d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+
     /* ── stav animací ── */
     .has-motion [data-reveal],
     .has-motion [data-item],
@@ -370,6 +373,9 @@
   </style>
 </head>
 <body>
+
+  <!-- 3D částicové pozadí přes celý web -->
+  <canvas id="bg3d"></canvas>
 
   <!-- ══════════ NAVBAR ══════════ -->
   <nav>
@@ -799,6 +805,82 @@
       } catch (e) {
         console.warn('3D hero se nepodařilo načíst:', e);
       }
+    }
+  </script>
+
+  <!-- ══════════ 3D POZADÍ CELÉHO WEBU (Three.js) ══════════ -->
+  <script type="module">
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const canvas = document.getElementById('bg3d');
+    if (canvas && !reduce) {
+      try {
+        const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js');
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 140);
+        camera.position.z = 42;
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // měkká kruhová textura
+        const tc = document.createElement('canvas'); tc.width = tc.height = 64;
+        const ctx = tc.getContext('2d');
+        const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        g.addColorStop(0, 'rgba(45,212,191,0.9)');
+        g.addColorStop(1, 'rgba(45,212,191,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+        const sprite = new THREE.CanvasTexture(tc);
+
+        const COUNT = window.innerWidth < 700 ? 70 : 130;
+        const RANGE = 90;
+        const positions = new Float32Array(COUNT * 3);
+        const drift = new Float32Array(COUNT);
+        for (let i = 0; i < COUNT; i++) {
+          positions[i*3]   = (Math.random() - 0.5) * RANGE;
+          positions[i*3+1] = (Math.random() - 0.5) * RANGE;
+          positions[i*3+2] = (Math.random() - 0.5) * 60;
+          drift[i] = 0.008 + Math.random() * 0.03;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.PointsMaterial({
+          size: 2.6, map: sprite, transparent: true, depthWrite: false, opacity: 0.42
+        });
+        const points = new THREE.Points(geo, mat);
+        scene.add(points);
+
+        let mx = 0, my = 0, tmx = 0, tmy = 0;
+        window.addEventListener('mousemove', (e) => {
+          tmx = (e.clientX / window.innerWidth - 0.5);
+          tmy = (e.clientY / window.innerHeight - 0.5);
+        });
+        function resize() {
+          renderer.setSize(window.innerWidth, window.innerHeight, false);
+          camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+        }
+        resize(); window.addEventListener('resize', resize);
+
+        let running = true;
+        document.addEventListener('visibilitychange', () => {
+          running = !document.hidden; if (running) requestAnimationFrame(loop);
+        });
+        function loop() {
+          if (!running) return;
+          const pos = geo.attributes.position.array;
+          for (let i = 0; i < COUNT; i++) {
+            pos[i*3+1] += drift[i];
+            if (pos[i*3+1] > RANGE / 2) pos[i*3+1] = -RANGE / 2;
+          }
+          geo.attributes.position.needsUpdate = true;
+          points.rotation.y += 0.0004;
+          mx += (tmx - mx) * 0.03; my += (tmy - my) * 0.03;
+          camera.position.x = mx * 12; camera.position.y = -my * 9;
+          camera.lookAt(scene.position);
+          renderer.render(scene, camera);
+          requestAnimationFrame(loop);
+        }
+        loop();
+      } catch (e) { console.warn('3D pozadí se nepodařilo načíst:', e); }
     }
   </script>
 
